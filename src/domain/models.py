@@ -31,3 +31,38 @@ class DigitalID:
     created_at: datetime
     updated_at: datetime
     has_temporary_restriction: bool = False  # mutable — Central Authority only
+
+
+@dataclass(frozen=True)
+class IdentityReadModel:
+    """Immutable projection of a DigitalID returned to consuming organisations.
+
+    Frozen so that no portal or downstream caller can accidentally mutate
+    identity state through a reference.
+    """
+
+    id: UUID
+    national_number: str
+    full_name: str
+    date_of_birth: date
+    nationality: str
+    address: str
+    status: IDStatus
+    has_temporary_restriction: bool
+    created_at: datetime
+    updated_at: datetime
+
+    @staticmethod
+    def from_digital_id(identity: DigitalID) -> IdentityReadModel:
+        return IdentityReadModel(
+            id=identity.id,
+            national_number=identity.national_number,
+            full_name=identity.full_name,
+            date_of_birth=identity.date_of_birth,
+            nationality=identity.nationality,
+            address=identity.address,
+            status=identity.status,
+            has_temporary_restriction=identity.has_temporary_restriction,
+            created_at=identity.created_at,
+            updated_at=identity.updated_at,
+        )
