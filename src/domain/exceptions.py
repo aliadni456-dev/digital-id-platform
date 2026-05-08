@@ -1,3 +1,10 @@
+"""Custom exception hierarchy for the Digital ID platform.
+
+Callers can inspect structured fields on each subclass (e.g. current/target,
+organisation/action) rather than parsing exception message strings.
+"""
+
+
 class DigitalIDException(Exception):
     """Base exception for all Digital ID platform errors."""
 
