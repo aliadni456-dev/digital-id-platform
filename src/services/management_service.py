@@ -74,8 +74,43 @@ class IdentityManagementService:
         )
         return IdentityReadModel.from_digital_id(identity)
 
+    def set_temporary_restriction(
+        self, actor: str, digital_id: UUID, restricted: bool
+    ) -> IdentityReadModel:
+        self._require_central_authority(actor, "set_temporary_restriction")
+        identity = self._repo.find_by_id(digital_id)
+        self._require_not_revoked(identity)
+        identity.has_temporary_restriction = restricted
+        identity.updated_at = datetime.utcnow()
+        self._repo.save(identity)
+        self._audit.record(
+            AuditEventType.IDENTITY_UPDATED,
+            actor=actor,
+            subject_id=str(digital_id),
+            detail=f"has_temporary_restriction={restricted}",
+        )
+        return IdentityReadModel.from_digital_id(identity)
+
     def reject_immutable_update(self, attribute: str) -> None:
         raise ImmutableAttributeViolation(attribute)
+
+    def change_status(
+        self, actor: str, digital_id: UUID, target_status: IDStatus
+    ) -> IdentityReadModel:
+        self._require_central_authority(actor, "change_status")
+        identity = self._repo.find_by_id(digital_id)
+        previous = identity.status
+        new_status = self._fsm.transition(previous, target_status)
+        identity.status = new_status
+        identity.updated_at = datetime.utcnow()
+        self._repo.save(identity)
+        self._audit.record(
+            AuditEventType.STATUS_CHANGED,
+            actor=actor,
+            subject_id=str(digital_id),
+            detail=f"{previous.value} -> {new_status.value}",
+        )
+        return IdentityReadModel.from_digital_id(identity)
 
     def _require_central_authority(self, actor: str, action: str) -> None:
         if actor != _CENTRAL_AUTHORITY:
