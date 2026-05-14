@@ -44,6 +44,7 @@ def pause() -> None:
 
 
 def main() -> None:
+    # Bootstrap — wire dependencies via constructor injection
     repo = InMemoryIdentityRepository()
     audit = AuditLogger()
     mgmt = IdentityManagementService(repository=repo, audit_logger=audit)
@@ -55,6 +56,9 @@ def main() -> None:
     print("  Consuming Organisations:  Tax Service, DVLA, National Bank")
     pause()
 
+    # -----------------------------------------------------------------------
+    # PHASE 1 — Identity Lifecycle Management (write side)
+    # -----------------------------------------------------------------------
     banner("PHASE 1 — IDENTITY LIFECYCLE MANAGEMENT")
 
     section("1.1  Creating Digital IDs  (Central Authority only)")
@@ -121,56 +125,145 @@ def main() -> None:
         print(f"  [REJECTED]  {exc}")
     pause()
 
+    # -----------------------------------------------------------------------
+    # PHASE 2 — State Machine
+    # -----------------------------------------------------------------------
     banner("PHASE 2 — STATE MACHINE  (Active -> Suspended -> Active -> Revoked)")
 
     section("2.1  Suspending Bob's ID")
-    mgmt.change_status(actor="central_authority", digital_id=id_bob.id, target_status=IDStatus.SUSPENDED)
+    mgmt.change_status(
+        actor="central_authority",
+        digital_id=id_bob.id,
+        target_status=IDStatus.SUSPENDED,
+    )
     show("Bob's status:", "suspended")
+    pause()
 
     section("2.2  Re-activating Bob's ID")
-    mgmt.change_status(actor="central_authority", digital_id=id_bob.id, target_status=IDStatus.ACTIVE)
+    mgmt.change_status(
+        actor="central_authority",
+        digital_id=id_bob.id,
+        target_status=IDStatus.ACTIVE,
+    )
     show("Bob's status:", "active")
+    pause()
 
     section("2.3  Revoking Bob's ID  (terminal state)")
-    mgmt.change_status(actor="central_authority", digital_id=id_bob.id, target_status=IDStatus.REVOKED)
+    mgmt.change_status(
+        actor="central_authority",
+        digital_id=id_bob.id,
+        target_status=IDStatus.REVOKED,
+    )
     show("Bob's status:", "revoked")
+    pause()
 
     section("2.4  Attempting to update a REVOKED identity")
+    print("  >> Attempting to update Bob's address after revocation...")
     try:
-        mgmt.update_address(actor="central_authority", digital_id=id_bob.id, new_address="1 Ghost Street")
+        mgmt.update_address(
+            actor="central_authority",
+            digital_id=id_bob.id,
+            new_address="1 Ghost Street",
+        )
     except InvalidStateTransition as exc:
         print(f"  [REJECTED]  {exc}")
+    pause()
 
     section("2.5  Attempting an invalid transition  (REVOKED -> ACTIVE)")
+    print("  >> Attempting to reactivate a REVOKED identity...")
     try:
-        mgmt.change_status(actor="central_authority", digital_id=id_bob.id, target_status=IDStatus.ACTIVE)
+        mgmt.change_status(
+            actor="central_authority",
+            digital_id=id_bob.id,
+            target_status=IDStatus.ACTIVE,
+        )
     except InvalidStateTransition as exc:
         print(f"  [REJECTED]  {exc}")
+    pause()
 
     section("2.6  Idempotent transition  (ACTIVE -> ACTIVE)")
-    same = mgmt.change_status(actor="central_authority", digital_id=id_alice.id, target_status=IDStatus.ACTIVE)
+    same = mgmt.change_status(
+        actor="central_authority",
+        digital_id=id_alice.id,
+        target_status=IDStatus.ACTIVE,
+    )
     show("Alice's status (idempotent):", f"{same.status.value}  -- no error raised")
+    pause()
 
+    # -----------------------------------------------------------------------
+    # PHASE 3 — Organisation Portal Verification (Strategy Pattern)
+    # -----------------------------------------------------------------------
     banner("PHASE 3 — ORGANISATION PORTAL VERIFICATION  (Strategy Pattern)")
 
-    mgmt.set_temporary_restriction(actor="central_authority", digital_id=id_alice.id, restricted=True)
+    mgmt.set_temporary_restriction(
+        actor="central_authority",
+        digital_id=id_alice.id,
+        restricted=True,
+    )
 
     section("3.1  Tax Service Portal")
-    tax_strategy = TaxVerificationStrategy(reporting_period_start=date(2026, 1, 1), reporting_period_end=date(2026, 12, 31))
+    tax_strategy = TaxVerificationStrategy(
+        reporting_period_start=date(2026, 1, 1),
+        reporting_period_end=date(2026, 12, 31),
+    )
+
+    print("\n  Alice (Active):")
     alice_tax = consume.verify(actor="tax_service", digital_id=id_alice.id, strategy=tax_strategy)
-    show("    Alice eligible_for_tax_processing", alice_tax.eligible_for_tax_processing)
+    show("    is_active", alice_tax.is_active)
+    show("    was_suspended_in_period", alice_tax.was_suspended_in_period)
+    show("    eligible_for_tax_processing", alice_tax.eligible_for_tax_processing)
+
+    print("\n  Bob (Revoked):")
+    bob_tax = consume.verify(actor="tax_service", digital_id=id_bob.id, strategy=tax_strategy)
+    show("    is_active", bob_tax.is_active)
+    show("    eligible_for_tax_processing", bob_tax.eligible_for_tax_processing)
+    pause()
 
     section("3.2  Driving Licence Portal (DVLA)")
     dvla_strategy = DrivingLicenceVerificationStrategy()
+
+    print("\n  Alice (Active but has temporary restriction):")
     alice_dvla = consume.verify(actor="dvla", digital_id=id_alice.id, strategy=dvla_strategy)
-    show("    Alice eligible_for_licence_issue", alice_dvla.eligible_for_licence_issue)
+    show("    is_active", alice_dvla.is_active)
+    show("    has_temporary_restriction", alice_dvla.has_temporary_restriction)
+    show("    eligible_for_licence_issue", alice_dvla.eligible_for_licence_issue)
+
+    print("\n  Carol (Active, no restriction):")
     carol_dvla = consume.verify(actor="dvla", digital_id=id_carol.id, strategy=dvla_strategy)
-    show("    Carol eligible_for_licence_issue", carol_dvla.eligible_for_licence_issue)
+    show("    is_active", carol_dvla.is_active)
+    show("    has_temporary_restriction", carol_dvla.has_temporary_restriction)
+    show("    eligible_for_licence_issue", carol_dvla.eligible_for_licence_issue)
+    pause()
 
     section("3.3  Bank / Employer Portal  (boolean response only)")
     bank_strategy = BankVerificationStrategy()
+
+    print("\n  Bank response structure:  BankVerificationResponse(is_valid, checked_at)")
+    print("  No identity attributes are exposed.\n")
+
     alice_bank = consume.verify(actor="national_bank", digital_id=id_alice.id, strategy=bank_strategy)
-    show("    Alice is_valid", alice_bank.is_valid)
+    bob_bank   = consume.verify(actor="national_bank", digital_id=id_bob.id,   strategy=bank_strategy)
+    carol_bank = consume.verify(actor="national_bank", digital_id=id_carol.id, strategy=bank_strategy)
+
+    show("    Alice  is_valid", alice_bank.is_valid)
+    show("    Bob    is_valid", bob_bank.is_valid)
+    show("    Carol  is_valid", carol_bank.is_valid)
+    pause()
+
+    # -----------------------------------------------------------------------
+    # PHASE 4 — Audit Trail Summary
+    # -----------------------------------------------------------------------
+    banner("PHASE 4 — AUDIT TRAIL SUMMARY")
+
+    all_events = audit.events
+    print(f"\n  Total events recorded: {len(all_events)}\n")
+
+    counts: dict[str, int] = {}
+    for evt in all_events:
+        counts[evt.event_type.value] = counts.get(evt.event_type.value, 0) + 1
+
+    for event_type, count in sorted(counts.items()):
+        print(f"    {event_type:<35} {count}")
 
     banner("DEMONSTRATION COMPLETE")
 
