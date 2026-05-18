@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
+*.pyo
 .pytest_cache/
 *.egg-info/
 dist/
@@ -7,3 +8,18 @@ build/
 .coverage
 htmlcov/
 setup_repo.sh
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
