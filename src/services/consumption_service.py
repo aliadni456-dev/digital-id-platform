@@ -1,3 +1,4 @@
+from typing import Any
 from uuid import UUID
 
 from src.domain.models import IdentityReadModel
@@ -31,7 +32,7 @@ class IdentityConsumptionService:
 
     def verify(
         self, actor: str, digital_id: UUID, strategy: VerificationStrategy
-    ):
+    ) -> Any:
         identity = self._repo.find_by_id(digital_id)
         read_model = IdentityReadModel.from_digital_id(identity)
         result = strategy.verify(read_model)

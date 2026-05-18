@@ -105,7 +105,12 @@ def main() -> None:
     section("1.3  Attempting to modify an immutable attribute")
     print("  >> Caller attempts to change Alice's date_of_birth...")
     try:
-        mgmt.reject_immutable_update(attribute="date_of_birth")
+        mgmt.update_attribute(
+            actor="central_authority",
+            digital_id=id_alice.id,
+            field_name="date_of_birth",
+            value="1990-01-01",
+        )
     except ImmutableAttributeViolation as exc:
         print(f"  [REJECTED]  {exc}")
     pause()
